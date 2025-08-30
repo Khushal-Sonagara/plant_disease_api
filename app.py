@@ -1,16 +1,25 @@
-import uvicorn
-from fastapi import FastAPI, UploadFile, File
-from fastapi.responses import JSONResponse
+import os
+import io
 import numpy as np
 import tensorflow as tf
-from PIL import Image
-import io
+from fastapi import FastAPI, UploadFile, File
+from fastapi.responses import JSONResponse
+from PIL import Image, ImageOps
+import uvicorn
 
-# Load the trained model
-model = tf.keras.models.load_model("trainedd_model_fixed.keras")
+# -----------------------
+# Config
+# -----------------------
+MODEL_PATH = os.getenv("MODEL_PATH", "trainedd_model_fixed.keras")
+IMG_SIZE = 128  # must match training
 
-# Class names
-class_name = [
+# -----------------------
+# Load Model
+# -----------------------
+model = tf.keras.models.load_model(MODEL_PATH)
+
+# Class names (must match training order!)
+class_names = [
     'Apple___Apple_scab',
     'Apple___Black_rot',
     'Apple___Cedar_apple_rust',
@@ -51,36 +60,40 @@ class_name = [
     'Tomato___healthy'
 ]
 
-# Initialize FastAPI app
+# -----------------------
+# FastAPI App
+# -----------------------
 app = FastAPI(title="Plant Disease Detection API")
 
-# Preprocessing function
-def preprocess_image(image_bytes):
-    img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-    img = img.resize((128, 128))  # same as training
-    img_array = np.array(img) / 255.0  # normalize if needed
+@app.get("/")
+async def root():
+    return {"status": "ok", "message": "Plant Disease Detection API is running"}
+
+def preprocess_image(image_bytes: bytes):
+    """Resize and normalize image"""
+    img = Image.open(io.BytesIO(image_bytes))
+    img = ImageOps.exif_transpose(img).convert("RGB")
+    img = img.resize((IMG_SIZE, IMG_SIZE))
+    img_array = np.asarray(img) / 255.0
     return np.expand_dims(img_array, axis=0)
 
 @app.post("/predict")
 async def predict(file: UploadFile = File(...)):
     try:
-        # Read image
         image_bytes = await file.read()
         input_arr = preprocess_image(image_bytes)
 
-        # Make prediction
-        predictions = model.predict(input_arr)
-        result_index = np.argmax(predictions)
-        confidence = float(np.max(predictions))
+        preds = model.predict(input_arr)
+        result_index = np.argmax(preds)
+        confidence = float(np.max(preds))
 
         return JSONResponse(content={
-            "disease": class_name[result_index],
+            "disease": class_names[result_index],
             "confidence": round(confidence, 4)
         })
-
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
-# Run with: uvicorn app:app --reload
 if __name__ == "__main__":
+    # For local testing
     uvicorn.run(app, host="0.0.0.0", port=8000)

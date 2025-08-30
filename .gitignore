@@ -1,0 +1,52 @@
+# Python cache/compiled files
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# Jupyter/IPython
+.ipynb_checkpoints
+
+# Log files
+*.log
+
+# Model checkpoints (if you generate new ones during training)
+*.h5
+*.ckpt
+*.ckpt.*
+
+# Large dataset files
+data/
+datasets/
+*.csv
+*.zip
+*.tar
+*.tar.gz
+
+# TensorFlow / Keras training artifacts
+saved_model/
+events.out.tfevents.*
+
+# IDE/editor settings
+.vscode/
+.idea/
+
+# Render build cache
+.render/
+
+# Ignore everything in root except necessary files
+!.gitignore
+!requirements.txt
+!app.py
+!trainedd_model_fixed.keras

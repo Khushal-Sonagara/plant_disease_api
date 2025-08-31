@@ -4,7 +4,6 @@ import numpy as np
 import tensorflow as tf
 from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import JSONResponse
-from PIL import Image, ImageOps
 import uvicorn
 
 # -----------------------
@@ -60,8 +59,23 @@ class_names = [
     'Tomato___healthy'
 ]
 
+# Sanity check: class count vs model outputs
+try:
+    n_out = model.output_shape[-1]
+    if n_out != len(class_names):
+        print(f"WARNING: model outputs {n_out} but you supplied {len(class_names)} class names.")
+except Exception:
+    # model.output_shape might be complicated for some custom models; ignore if not available
+    pass
+
+# Warm-up (avoid first-call latency)
+try:
+    _ = model.predict(np.zeros((1, IMG_SIZE, IMG_SIZE, 3), dtype=np.float32))
+except Exception:
+    pass
+
 # -----------------------
-# FastAPI App
+# FastAPI app
 # -----------------------
 app = FastAPI(title="Plant Disease Detection API")
 
@@ -69,27 +83,43 @@ app = FastAPI(title="Plant Disease Detection API")
 async def root():
     return {"status": "ok", "message": "Plant Disease Detection API is running"}
 
-def preprocess_image(image_bytes: bytes):
-    """Resize and normalize image"""
-    img = Image.open(io.BytesIO(image_bytes))
-    img = ImageOps.exif_transpose(img).convert("RGB")
-    img = img.resize((IMG_SIZE, IMG_SIZE))
-    img_array = np.asarray(img) / 255.0
-    return np.expand_dims(img_array, axis=0)
+def preprocess_using_user_code(image_bytes: bytes):
+    """
+    Uses the exact sequence you used locally:
+      - tf.keras.preprocessing.image.load_img from bytes
+      - tf.keras.preprocessing.image.img_to_array
+      - wrap into a batch (no /255 normalization)
+    """
+    # load_img accepts a file-like (BytesIO), and target_size
+    pil_img = tf.keras.preprocessing.image.load_img(io.BytesIO(image_bytes), target_size=(IMG_SIZE, IMG_SIZE))
+    arr = tf.keras.preprocessing.image.img_to_array(pil_img)          # shape (H, W, C), dtype float32
+    batch = np.array([arr])                                           # shape (1, H, W, C)
+    return batch
 
 @app.post("/predict")
 async def predict(file: UploadFile = File(...)):
     try:
         image_bytes = await file.read()
-        input_arr = preprocess_image(image_bytes)
+        input_arr = preprocess_using_user_code(image_bytes)
 
         preds = model.predict(input_arr)
-        result_index = np.argmax(preds)
+
+        # Make preds a 1D vector of probabilities/logits
+        preds = np.squeeze(preds)
+        if preds.ndim == 0:
+            # single scalar? unexpected
+            return JSONResponse(content={"error": "Unexpected model output shape"}, status_code=500)
+
+        result_index = int(np.argmax(preds))
         confidence = float(np.max(preds))
+
+        # safe bounds
+        if result_index < 0 or result_index >= len(class_names):
+            return JSONResponse(content={"error": "Predicted index outside class list bounds"}, status_code=500)
 
         return JSONResponse(content={
             "disease": class_names[result_index],
-            "confidence": round(confidence, 4)
+            "confidence": round(confidence, 6)
         })
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)

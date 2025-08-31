@@ -7,3 +7,6 @@ services:
     envVars:
       - key: MODEL_PATH
         value: trainedd_model_fixed.keras
+
+
+startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT

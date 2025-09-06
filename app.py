@@ -5,6 +5,8 @@ import tensorflow as tf
 from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import JSONResponse
 import uvicorn
+from fastapi.middleware.cors import CORSMiddleware  # <-- ADD THIS
+
 
 # -----------------------
 # Config

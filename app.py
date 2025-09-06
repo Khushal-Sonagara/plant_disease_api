@@ -79,6 +79,14 @@ except Exception:
 # -----------------------
 app = FastAPI(title="Plant Disease Detection API")
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 @app.get("/")
 async def root():
     return {"status": "ok", "message": "Plant Disease Detection API is running"}
